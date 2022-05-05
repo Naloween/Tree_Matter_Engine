@@ -1,0 +1,10 @@
+{
+    "name": "007",
+    "version": "0.0.1",
+    "description": "app to run 007 game",
+    "dependencies": {
+        "body-parser": "^1.19.1",
+        "express": "^4.17.2",
+        "socket.io": "^4.4.0"
+    }
+}
