@@ -127,7 +127,7 @@ function castRayGPU(nodes, materials, lights, ray_node_index, cast_point, direct
 
         while (nb_steps < max_steps) {
 
-            const e = 0.0001;
+            const e = 0.001;
 
             //calcul de la distance avec le plan du node
             let res_plan = intersectionPlanGPU(current_cast_point, current_direction, nodes, node_index);
@@ -148,7 +148,7 @@ function castRayGPU(nodes, materials, lights, ray_node_index, cast_point, direct
             let next_node_index = getNodeGPU(nodes, nodes[node_index + NEIGHBORS_INDEX + face], next_cast_point);
             previous_node_index = node_index;
 
-            if (res_plan[0] == 1 && t_plan >= 0 && t_plan < t){
+            if (res_plan[0] == 1 && t_plan >= 0 && t_plan < t - e){
                 t = t_plan;
 
                 next_cast_point = [current_cast_point[0] + t * current_direction[0],
@@ -838,7 +838,6 @@ class TreeMatterEngine{
             for(let k=0; k<material_array.length; k++){
                 this.materials_array.push(material_array[k]);
             }
-            console.log(node.plan_material);
         }
 
         //create data space

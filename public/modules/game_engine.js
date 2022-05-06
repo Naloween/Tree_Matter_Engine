@@ -106,7 +106,7 @@ class GameEngine{
         this.player = player;
         this.view = view;
 
-        this.render_distance = 500;
+        this.render_distance = 200;
         this.max_depth = 15;
 
         this.dt_fps = 1;
@@ -116,11 +116,11 @@ class GameEngine{
         let width = 1000;
         let height = 600;
 
-        let max_steps = 100;
+        let max_steps = 80;
         let taille_pixel = 4;
         let fov = taille_pixel;
         this.camera = new tme.Camera(width, height, document.getElementById("view"), fov, max_steps, taille_pixel);
-        this.camera.position = this.player.position;
+        this.camera.position = [this.player.position[0], this.player.position[1], this.player.position[2]];
 
         // world
         let world_node = this.generate_world(this.camera.position, this.render_distance, this.max_depth);
@@ -130,8 +130,7 @@ class GameEngine{
         let lights = [my_light];
 
         this.engine = new tme.TreeMatterEngine(this.camera, world_node, lights);
-
-        console.log(this.engine.nodes_array);
+        console.log(this.engine.nodes_array.length)
 
         // Events
 
@@ -214,15 +213,16 @@ class GameEngine{
 
     find_bound(start_position, end_position, n_iter){
         let u = [end_position[0] - start_position[0], end_position[1] - start_position[1], end_position[2] - start_position[2]];
-        let min_m = 0;
-        let max_m = 1;
+        let min_m = 0.;
+        let max_m = 1.;
         let m = (max_m + min_m)/2;
-        let start_material = this.material_map(start_position[0], start_position[1], start_position[2]);
+        //let start_material = this.material_map(start_position[0], start_position[1], start_position[2]);
+        let end_material = this.material_map(end_position[0], end_position[1], end_position[2]);
         
         for (let i = 0; i<n_iter; i++){
             m = (max_m + min_m)/2;
             let check_material = this.material_map(start_position[0] + m*u[0], start_position[1] + m*u[1], start_position[2] + m*u[2]);
-            if (check_material != start_material){
+            if (check_material == end_material){
                 max_m = m;
             } else{
                 min_m = m;
@@ -230,9 +230,9 @@ class GameEngine{
         }
 
         // for (let i = 0; i<n_iter; i++){
-        //     m = i * (max_m - min_m)/n_iter;
+        //     m = min_m + i * (max_m - min_m)/n_iter;
         //     let check_material = this.material_map(start_position[0] + m*u[0], start_position[1] + m*u[1], start_position[2] + m*u[2]);
-        //     if (check_material != start_material){
+        //     if (check_material == end_material){
         //         break;
         //     }
         // }
@@ -242,55 +242,92 @@ class GameEngine{
 
     generate_node(node, position, render_distance, max_depth){
 
-        let dx = Math.abs((node.bounds[1]-node.bounds[0])/2);
-        let dy = Math.abs((node.bounds[3]-node.bounds[2])/2);
-        let dz = Math.abs((node.bounds[5]-node.bounds[4])/2);
-        let l = Math.sqrt(dx*dx + dy*dy + dz*dz);
-        let center = node.get_center();
-
-        let distance_to_node = Math.max(node.distance_from(position), 0);
         let render_distance_rate = render_distance;
         
-        if (node.depth < max_depth * Math.exp(-distance_to_node / render_distance_rate)){
-            let materials = [];
+        let nodes = [node];
+        let node_generating = node;      
+        
+        while (nodes.length > 0){
 
-            for (let k=0; k<2; k++){
-                for (let j=0; j<2; j++){
-                    for (let i=0; i<2; i++){
-                        let point = [center[0] - dx/2 + i*dx, center[1] - dy/2 + j*dy, center[2] - dz/2 + k*dz];
-                        materials.push(this.material_map(point[0], point[1], point[2]));
+            node_generating = nodes.pop();
+
+            let dx = Math.abs((node_generating.bounds[1]-node_generating.bounds[0])/2);
+            let dy = Math.abs((node_generating.bounds[3]-node_generating.bounds[2])/2);
+            let dz = Math.abs((node_generating.bounds[5]-node_generating.bounds[4])/2);
+            let l = Math.sqrt(dx*dx + dy*dy + dz*dz);
+            let center = node_generating.get_center();            
+            let normale = this.normal_map(center[0], center[1], center[2]);
+            let start_point = [center[0] - l * normale[0], center[1] - l * normale[1], center[2] - l * normale[2]];
+            let end_point = [center[0] + l * normale[0], center[1] + l * normale[1], center[2] + l * normale[2]];
+            let start_material = this.material_map(start_point[0], start_point[1], start_point[2]);
+            let end_material = this.material_map(end_point[0], end_point[1], end_point[2]);
+            let distance_to_node = Math.max(node_generating.distance_from(position), 0);
+            let dividing = node_generating.depth < max_depth * Math.exp(-distance_to_node / render_distance_rate);
+            
+            if (start_material != end_material){
+                // Create plan of the node
+                let nb_iterations = 20 - node_generating.depth;
+                node_generating.plan_point = this.find_bound(start_point, end_point, nb_iterations);
+                node_generating.plan_vec = normale;
+                node_generating.material = this.material_map(end_point[0], end_point[1], end_point[2]);
+                node_generating.plan_material = this.material_map(start_point[0], start_point[1], start_point[2]);
+            }
+
+            // divide node
+            if (dividing){
+                let materials = [];
+    
+                for (let k=0; k<2; k++){
+                    for (let j=0; j<2; j++){
+                        for (let i=0; i<2; i++){
+                            let point = [center[0] - dx/2 + i*dx, center[1] - dy/2 + j*dy, center[2] - dz/2 + k*dz];
+                            materials.push(this.material_map(point[0], point[1], point[2]));
+                        }
+                    }
+                }
+    
+                node_generating.divide(materials);
+                for (let child of node_generating.childs){
+                    nodes.push(child);
+                }
+            }
+
+            // fusion nodes if necessary
+            if (!dividing && node_generating.child_index == 0){
+                let node_fusion = node_generating.parent;
+
+                //fusionne si la division n'était pas justifiée
+                let fusionne = true;
+                for (let child of node_fusion.childs){
+                    if (child == null || (child.childs[0] != null || child.material != node_fusion.childs[0].material)){ //on justifie la division et annule la fusion
+                        fusionne = false;
+                        break;
+                    }
+                }
+    
+                while (fusionne){
+                    node_fusion.fusion();
+
+                    //on ne fusionne pas le parent tant qu'on a pas fusionné tous ses autres enfants
+                    if (node_fusion.child_index > 0 ){
+                        break
+                    }
+                    node_fusion = node_fusion.parent;
+    
+                    if (node_fusion == null){
+                        break;
+                    }
+        
+                    //fusionne si la division n'était pas justifiée
+                    fusionne = true;
+                    for (let child of node_fusion.childs){
+                        if (child == null || child.childs[0] != null || child.material != node_fusion.childs[0].material){ //on justifie la division et annule la fusion
+                            fusionne = false;
+                            break;
+                        }
                     }
                 }
             }
-
-            node.divide(materials);
-            for (let child of node.childs){
-                this.generate_node(child, position, render_distance, max_depth);
-            }
-
-            //fusionne si la division n'était pas justifiée
-            let fusionne = true;
-            for (let child of node.childs){
-                if (child.childs[0] != null || child.material != node.childs[0].material){ //on justifie la division et annule la fusion
-                    fusionne = false;
-                    break;
-                }
-            }
-
-            if (fusionne){
-                node.fusion();
-            }
-        }
-
-        let normale = this.normal_map(center[0], center[1], center[2]);
-        let start_point = [center[0] - l * normale[0], center[1] - l * normale[1], center[2] - l * normale[2]];
-        let end_point = [center[0] + l * normale[0], center[1] + l * normale[1], center[2] + l * normale[2]];
-        
-        if (this.material_map(start_point[0], start_point[1], start_point[2]) != this.material_map(end_point[0], end_point[1], end_point[2])){
-            node.plan_point = this.find_bound(start_point, end_point, 20);
-            node.plan_vec = normale;
-            node.material = this.material_map(end_point[0], end_point[1], end_point[2]);
-            node.plan_material = this.material_map(start_point[0], start_point[1], start_point[2]);
         }
     }
 

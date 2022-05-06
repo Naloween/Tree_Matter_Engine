@@ -57,7 +57,7 @@ function material_map(x, y, z){
     if ( z < 3 * altitude_max){
         return air_material;
     }
-    return void_material;
+    return air_material;
 }
 
 function normal_map(x, y, z){
