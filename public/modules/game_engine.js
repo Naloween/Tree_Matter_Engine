@@ -106,8 +106,8 @@ class GameEngine{
         this.player = player;
         this.view = view;
 
-        this.render_distance = 200;
-        this.max_depth = 15;
+        this.render_distance = 500;
+        this.max_depth = 17;
 
         this.dt_fps = 1;
         this.fps = 0;
@@ -116,7 +116,7 @@ class GameEngine{
         let width = 1000;
         let height = 600;
 
-        let max_steps = 80;
+        let max_steps = 50;
         let taille_pixel = 4;
         let fov = taille_pixel;
         this.camera = new tme.Camera(width, height, document.getElementById("view"), fov, max_steps, taille_pixel);
@@ -130,7 +130,7 @@ class GameEngine{
         let lights = [my_light];
 
         this.engine = new tme.TreeMatterEngine(this.camera, world_node, lights);
-        console.log(this.engine.nodes_array.length)
+        console.log(this.engine.nodes_lights_array.length)
 
         // Events
 
@@ -266,7 +266,7 @@ class GameEngine{
             
             if (start_material != end_material){
                 // Create plan of the node
-                let nb_iterations = 20 - node_generating.depth;
+                let nb_iterations = 20;// - node_generating.depth;
                 node_generating.plan_point = this.find_bound(start_point, end_point, nb_iterations);
                 node_generating.plan_vec = normale;
                 node_generating.material = this.material_map(end_point[0], end_point[1], end_point[2]);

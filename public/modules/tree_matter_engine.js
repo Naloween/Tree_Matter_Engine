@@ -1,14 +1,17 @@
 
 const WORLD_SIZE = 10000.0
+const MAX_SIZE_ARRAY_GPU = 2**24;
 
 // GPU functions
-function intersectionNodeGPU(cast_point, direction, nodes, bounds_index){
-    let t_minx = direction[0] == 0 ? -1. : (nodes[bounds_index + 0] - cast_point[0]) / direction[0];
-    let t_maxx = direction[0] == 0 ? -1. : (nodes[bounds_index + 1] - cast_point[0]) / direction[0];
-    let t_miny = direction[1] == 0 ? -1. : (nodes[bounds_index + 2] - cast_point[1]) / direction[1];
-    let t_maxy = direction[1] == 0 ? -1. : (nodes[bounds_index + 3] - cast_point[1]) / direction[1];
-    let t_minz = direction[2] == 0 ? -1. : (nodes[bounds_index + 4] - cast_point[2]) / direction[2];
-    let t_maxz = direction[2] == 0 ? -1. : (nodes[bounds_index + 5] - cast_point[2]) / direction[2];
+function intersectionNodeGPU(cast_point, direction, nodes_bounds, node_id){
+    const BOUNDS_DATA_SIZE = 6;
+
+    let t_minx = direction[0] == 0 ? -1. : (nodes_bounds[node_id * BOUNDS_DATA_SIZE + 0] - cast_point[0]) / direction[0];
+    let t_maxx = direction[0] == 0 ? -1. : (nodes_bounds[node_id * BOUNDS_DATA_SIZE + 1] - cast_point[0]) / direction[0];
+    let t_miny = direction[1] == 0 ? -1. : (nodes_bounds[node_id * BOUNDS_DATA_SIZE + 2] - cast_point[1]) / direction[1];
+    let t_maxy = direction[1] == 0 ? -1. : (nodes_bounds[node_id * BOUNDS_DATA_SIZE + 3] - cast_point[1]) / direction[1];
+    let t_minz = direction[2] == 0 ? -1. : (nodes_bounds[node_id * BOUNDS_DATA_SIZE + 4] - cast_point[2]) / direction[2];
+    let t_maxz = direction[2] == 0 ? -1. : (nodes_bounds[node_id * BOUNDS_DATA_SIZE + 5] - cast_point[2]) / direction[2];
 
     let face = 0;
     let t = t_minx;
@@ -39,65 +42,58 @@ function intersectionNodeGPU(cast_point, direction, nodes, bounds_index){
     
 }
 
-function intersectionPlanGPU(cast_point, direction, nodes, node_index){
+function intersectionPlanGPU(cast_point, direction, nodes_plan_point, nodes_plan_normal, node_id){
     // return [is_intersecting, distance to intersection]
 
-    const PLAN_POINT_INDEX = 47;
-    const PLAN_VEC_INDEX = 50;
+    const PLAN_POINT_DATA_SIZE = 3;
+    const PLAN_VEC_DATA_SIZE = 3;
 
-    let den = direction[0]*nodes[node_index + PLAN_VEC_INDEX + 0]
-            + direction[1]*nodes[node_index + PLAN_VEC_INDEX + 1]
-            + direction[2]*nodes[node_index + PLAN_VEC_INDEX + 2];
+    let den = direction[0] * nodes_plan_normal[node_id * 3 + 0]
+            + direction[1] * nodes_plan_normal[node_id * 3 + 1]
+            + direction[2] * nodes_plan_normal[node_id * 3 + 2];
     
     if (den == 0){
         return [0, 0];
     }
 
-    let num = (nodes[node_index + PLAN_POINT_INDEX + 0] - cast_point[0]) * nodes[node_index + PLAN_VEC_INDEX + 0]
-            + (nodes[node_index + PLAN_POINT_INDEX + 1] - cast_point[1]) * nodes[node_index + PLAN_VEC_INDEX + 1]
-            + (nodes[node_index + PLAN_POINT_INDEX + 2] - cast_point[2]) * nodes[node_index + PLAN_VEC_INDEX + 2];
+    let num = (nodes_plan_point[node_id * 3 + 0] - cast_point[0]) * nodes_plan_normal[node_id * 3 + 0]
+            + (nodes_plan_point[node_id * 3 + 1] - cast_point[1]) * nodes_plan_normal[node_id * 3 + 1]
+            + (nodes_plan_point[node_id * 3 + 2] - cast_point[2]) * nodes_plan_normal[node_id * 3 + 2];
 
     return [1, num/den];
 }
 
-function getNodeGPU(nodes, node_index, position){
-    if (node_index < 0){
+function getNodeGPU(nodes_tresholds, nodes_childs, node_id, position){
+
+    if (node_id < 0){
         return -1;
     }
 
-    let next_node_index = position[0] < nodes[node_index + 2] ?
-                            position[1] < nodes[node_index + 3] ?
-                                position[2] < nodes[node_index + 4] ? nodes[node_index + 5 + 0] : nodes[node_index + 5 + 4]
-                            :   position[2] < nodes[node_index + 4] ? nodes[node_index + 5 + 2] : nodes[node_index + 5 + 6]
-                        :   position[1] < nodes[node_index + 3] ?
-                                position[2] < nodes[node_index + 4] ? nodes[node_index + 5 + 1] : nodes[node_index + 5 + 5]
-                            :   position[2] < nodes[node_index + 4] ? nodes[node_index + 5 + 3] : nodes[node_index + 5 + 7]
+    let next_node_id = (position[0] < nodes_tresholds[node_id * 3 + 0] ?
+                            position[1] < nodes_tresholds[node_id * 3 + 1] ?
+                                position[2] < nodes_tresholds[node_id * 3 + 2] ? nodes_childs[node_id * 8 + 0] : nodes_childs[node_id * 8 + 4]
+                            :   position[2] < nodes_tresholds[node_id * 3 + 2] ? nodes_childs[node_id * 8 + 2] : nodes_childs[node_id * 8 + 6]
+                        :   position[1] < nodes_tresholds[node_id * 3 + 1] ?
+                                position[2] < nodes_tresholds[node_id * 3 + 2] ? nodes_childs[node_id * 8 + 1] : nodes_childs[node_id * 8 + 5]
+                            :   position[2] < nodes_tresholds[node_id * 3 + 2] ? nodes_childs[node_id * 8 + 3] : nodes_childs[node_id * 8 + 7]);
 
-    while (next_node_index >= 0){
-        node_index = next_node_index;
-        next_node_index = position[0] < nodes[node_index + 2] ?
-                            position[1] < nodes[node_index + 3] ?
-                                position[2] < nodes[node_index + 4] ? nodes[node_index + 5 + 0] : nodes[node_index + 5 + 4]
-                            :   position[2] < nodes[node_index + 4] ? nodes[node_index + 5 + 2] : nodes[node_index + 5 + 6]
-                        :   position[1] < nodes[node_index + 3] ?
-                                position[2] < nodes[node_index + 4] ? nodes[node_index + 5 + 1] : nodes[node_index + 5 + 5]
-                            :   position[2] < nodes[node_index + 4] ? nodes[node_index + 5 + 3] : nodes[node_index + 5 + 7]
+    while (next_node_id >= 0){
+        node_id = next_node_id;
+        next_node_id = (position[0] < nodes_tresholds[node_id * 3 + 0] ?
+                            position[1] < nodes_tresholds[node_id * 3 + 1] ?
+                                position[2] < nodes_tresholds[node_id * 3 + 2] ? nodes_childs[node_id * 8 + 0] : nodes_childs[node_id * 8 + 4]
+                            :   position[2] < nodes_tresholds[node_id * 3 + 2] ? nodes_childs[node_id * 8 + 2] : nodes_childs[node_id * 8 + 6]
+                        :   position[1] < nodes_tresholds[node_id * 3 + 1] ?
+                                position[2] < nodes_tresholds[node_id * 3 + 2] ? nodes_childs[node_id * 8 + 1] : nodes_childs[node_id * 8 + 5]
+                            :   position[2] < nodes_tresholds[node_id * 3 + 2] ? nodes_childs[node_id * 8 + 3] : nodes_childs[node_id * 8 + 7]);
     }
-    return node_index;
+    return node_id;
 }
 
-function castRayGPU(nodes, materials, lights, ray_node_index, cast_point, direction, channel, max_steps){
+function castRayGPU(nodes, nodes_tresholds, nodes_childs, nodes_bounds, nodes_neighbors, nodes_lights, nodes_plan_normal,
+    nodes_plan_point, materials, lights, ray_node_id, cast_point, direction, channel, max_steps){
 
-    const PARENT_INDEX = 0;
-    const MATERIAL_INDEX = 1;
-    const TRESHOLDS_INDEX = 2;
-    const CHILDS_INDEX = 5;
-    const BOUNDS_INDEX = 13;
-    const NEIGHBORS_INDEX = 19;
-    const LIGHT_IN_INDEX = 25;
-    const PLAN_MATERIAL_INDEX = 46;
-    const PLAN_POINT_INDEX = 47;
-    const PLAN_VEC_INDEX = 50;
+    const MATERIAL_DATA_SIZE = 12;
 
     // return color
 
@@ -105,17 +101,17 @@ function castRayGPU(nodes, materials, lights, ray_node_index, cast_point, direct
 
     let iteration = 0;
     let next_ray = true;
-    let next_ray_node_index = ray_node_index;
+    let next_ray_node_id = ray_node_id;
     let next_ray_percentage = 1;
     let next_ray_cast_point = cast_point;
     let next_ray_direction = direction;
     
     while (next_ray && iteration < 3){
         next_ray = false;
-        let node_index = getNodeGPU(nodes, next_ray_node_index, next_ray_cast_point);
+        let node_id = getNodeGPU(nodes_tresholds, nodes_childs, next_ray_node_id, next_ray_cast_point);
         let ray_percentage = next_ray_percentage;
 
-        if (node_index < 0){
+        if (node_id < 0){
             break;
         }
 
@@ -123,18 +119,18 @@ function castRayGPU(nodes, materials, lights, ray_node_index, cast_point, direct
         let current_direction = next_ray_direction;
         let distance = 0.;
         let nb_steps = 0;
-        let previous_node_index = -1;
+        let previous_node_id = -1;
 
         while (nb_steps < max_steps) {
 
-            const e = 0.001;
+            const e = 0.0001;
 
             //calcul de la distance avec le plan du node
-            let res_plan = intersectionPlanGPU(current_cast_point, current_direction, nodes, node_index);
+            let res_plan = intersectionPlanGPU(current_cast_point, current_direction, nodes_plan_point, nodes_plan_normal, node_id);
             let t_plan = res_plan[1] + e;
 
             //Calcul de t la distance entre le point de cast et le bord le plus proche du node
-            let res_node = intersectionNodeGPU(current_cast_point, current_direction, nodes, node_index + BOUNDS_INDEX);
+            let res_node = intersectionNodeGPU(current_cast_point, current_direction, nodes_bounds, node_id);
             let t = res_node[0] + e;
             let face = res_node[1];
 
@@ -145,71 +141,67 @@ function castRayGPU(nodes, materials, lights, ray_node_index, cast_point, direct
                                 current_cast_point[2] + t * current_direction[2]];
             let next_direction = current_direction;
 
-            let next_node_index = getNodeGPU(nodes, nodes[node_index + NEIGHBORS_INDEX + face], next_cast_point);
-            previous_node_index = node_index;
+            let next_node_id = getNodeGPU(nodes_tresholds, nodes_childs, nodes_neighbors[node_id * 6 + face], next_cast_point);
+            previous_node_id = node_id;
 
-            if (res_plan[0] == 1 && t_plan >= 0 && t_plan < t - e){
+            if (res_plan[0] == 1 && t_plan > 0 && t_plan <= t){
                 t = t_plan;
 
                 next_cast_point = [current_cast_point[0] + t * current_direction[0],
                                 current_cast_point[1] + t * current_direction[1],
                                 current_cast_point[2] + t * current_direction[2]];
 
-                next_node_index = node_index;
-                previous_node_index = node_index;
+                next_node_id = node_id;
+                previous_node_id = node_id;
             }
 
-            if (t<0){
+            if (t <= 0){
                 return color;
             }
 
             //Pass through current node
-            let plan_scal = (current_cast_point[0] - nodes[node_index + PLAN_POINT_INDEX + 0]) * nodes[node_index + PLAN_VEC_INDEX + 0]
-                            + (current_cast_point[1] - nodes[node_index + PLAN_POINT_INDEX + 1]) * nodes[node_index + PLAN_VEC_INDEX + 1]
-                            + (current_cast_point[2] - nodes[node_index + PLAN_POINT_INDEX + 2]) * nodes[node_index + PLAN_VEC_INDEX + 2];
-            let material_index = plan_scal < 0 ? nodes[node_index + PLAN_MATERIAL_INDEX] : nodes[node_index + MATERIAL_INDEX];
-            let transparency = materials[material_index + 3 + channel];
+            let plan_scal = (current_cast_point[0] - nodes_plan_point[node_id * 3 + 0]) * nodes_plan_normal[node_id * 3 + 0]
+                            + (current_cast_point[1] - nodes_plan_point[node_id * 3 + 1]) * nodes_plan_normal[node_id * 3 + 1]
+                            + (current_cast_point[2] - nodes_plan_point[node_id * 3 + 2]) * nodes_plan_normal[node_id * 3 + 2];
+            let material_id = plan_scal < 0 ? nodes[node_id * 3 + 2] : nodes[node_id * 3 + 1];
+            let transparency = materials[material_id * MATERIAL_DATA_SIZE + 3 + channel];
 
             let light = 0.;
             
             if (transparency <= 0.){
                 let nearest_face = 0;
-                let distance_to_nearest_face = Math.abs(current_cast_point[0] - nodes[node_index + BOUNDS_INDEX]);
+                let distance_to_nearest_face = Math.abs(current_cast_point[0] - nodes_bounds[node_id * 6 + 0]);
 
                 for (let potential_nearest_face = 1; potential_nearest_face < 6; potential_nearest_face++){
 
-                    let distance_to_face = Math.abs(current_cast_point[potential_nearest_face / 2] - nodes[node_index + BOUNDS_INDEX + potential_nearest_face]);
+                    let distance_to_face = Math.abs(current_cast_point[potential_nearest_face / 2] - nodes_bounds[node_id * 6 + potential_nearest_face]);
                     if (distance_to_face < distance_to_nearest_face){
                         distance_to_nearest_face = distance_to_face;
                         nearest_face = potential_nearest_face;
                     }
                 }
 
-                if (plan_scal >= 0 || (nodes[node_index + PLAN_VEC_INDEX + 0] == 0 && nodes[node_index + PLAN_VEC_INDEX + 1] == 0 && nodes[node_index + PLAN_VEC_INDEX + 2] == 0)){
-                    light = nodes[node_index + LIGHT_IN_INDEX + 3 * nearest_face + channel];
+                if (plan_scal >= 0 || (nodes_plan_normal[node_id * 3 + 0] == 0 && nodes_plan_normal[node_id * 3 + 1] == 0 && nodes_plan_normal[node_id * 3 + 2] == 0)){
+                    light = nodes_lights[node_id * 21 + 3 * nearest_face + channel];
                 } else {
-                    let distance_to_plan = (nodes[node_index + PLAN_POINT_INDEX + 0] - current_cast_point[0]) * nodes[node_index + PLAN_VEC_INDEX + 0]
-                                        + (nodes[node_index + PLAN_POINT_INDEX + 1] - current_cast_point[1]) * nodes[node_index + PLAN_VEC_INDEX + 1]
-                                        + (nodes[node_index + PLAN_POINT_INDEX + 2] - current_cast_point[2]) * nodes[node_index + PLAN_VEC_INDEX + 2];
+                    let distance_to_plan = (nodes_plan_point[node_id * 3 + 0] - current_cast_point[0]) * nodes_plan_normal[node_id * 3 + 0]
+                                        + (nodes_plan_point[node_id * 3 + 1] - current_cast_point[1]) * nodes_plan_normal[node_id * 3 + 1]
+                                        + (nodes_plan_point[node_id * 3 + 2] - current_cast_point[2]) * nodes_plan_normal[node_id * 3 + 2];
 
                     if (distance_to_plan < distance_to_nearest_face){
-                        light = nodes[node_index + LIGHT_IN_INDEX + 18 + channel]; // lumière du plan
+                        light = nodes_lights[node_id * 21 + 18 + channel]; // lumière du plan
                     } else {
-                        light = nodes[node_index + LIGHT_IN_INDEX + 3 * nearest_face + channel];
+                        light = nodes_lights[node_id * 21 + 3 * nearest_face + channel];
                     }
                 }
-
-                
-
             } else if(transparency >= 1.) {
                 light = 0.0;
 
             } else {
-
                 for (let face=0; face < 6; face++){
                     let index_direction = face/2;
-                    let F = nodes[node_index + BOUNDS_INDEX + face];
-                    let A = nodes[node_index + LIGHT_IN_INDEX + 3 * face + channel]; //light on face
+                    let F = nodes_bounds[node_id * 6 + face];
+                    let A = nodes_lights[node_id * 21 + 3 * face + channel]; //light on face
     
                     let d = F - current_cast_point[index_direction] - t * (current_direction[index_direction] - 1);
                     let d0 = F - current_cast_point[index_direction];
@@ -231,9 +223,11 @@ function castRayGPU(nodes, materials, lights, ray_node_index, cast_point, direct
                 }
             }
 
-            light *= ray_percentage * (1-transparency) * materials[material_index + channel] //diffusion
+            light *= ray_percentage * (1-transparency) * materials[material_id * MATERIAL_DATA_SIZE + channel] //diffusion
             color += light;
             ray_percentage *= transparency**t
+
+            //color = nb_steps/max_steps;
 
             // check ray percentage
 
@@ -241,11 +235,11 @@ function castRayGPU(nodes, materials, lights, ray_node_index, cast_point, direct
                 break;
             }
     
-            if (next_node_index >= 0){
-                let next_material_index = nodes[next_node_index+1];
+            if (next_node_id >= 0){
+                let next_material_id = nodes[next_node_id * 3 + 1];
                 
                 // //Reflect on next node
-                // let coef_reflection = ray_percentage * materials[next_material_index+6 + channel];            
+                // let coef_reflection = ray_percentage * materials[next_material_id+6 + channel];            
                 
                 // let direction_reflection = [-current_direction[0], current_direction[1], current_direction[2]];
                 // if (face == 2 || face == 3) {
@@ -271,8 +265,8 @@ function castRayGPU(nodes, materials, lights, ray_node_index, cast_point, direct
                 // // Refraction
                 // //n1sin(i) = n2sin(r)
                 
-                // let n1 = materials[material_index+9 + channel];
-                // let n2 = materials[next_material_index+9 + channel];
+                // let n1 = materials[material_id+9 + channel];
+                // let n2 = materials[next_material_id+9 + channel];
                 // if (n2 != n1) {
                 //     let normale = [1., 0., 0.];
                 //     if (face == 2 || face == 3){
@@ -306,7 +300,7 @@ function castRayGPU(nodes, materials, lights, ray_node_index, cast_point, direct
                 //     if (n1 > n2 && sini >= n2/n1) {
                 //         next_direction = direction_reflection;
                 //         next_cast_point = cast_point_reflection;
-                //         next_node_index = node_index;
+                //         next_node_id = node_id;
                 //     }
                 // }
     
@@ -315,7 +309,7 @@ function castRayGPU(nodes, materials, lights, ray_node_index, cast_point, direct
                 current_cast_point = next_cast_point;
                 current_direction = next_direction;
     
-                node_index = next_node_index;
+                node_id = next_node_id;
                 
                 nb_steps += 1;
             } else {
@@ -327,7 +321,9 @@ function castRayGPU(nodes, materials, lights, ray_node_index, cast_point, direct
     return color;
 }
 
-function renderGPU(nodes, materials, lights, node_index, width, height, fov, u, ux, uy, position, diaphragme, max_steps, taille_pixel){
+function renderGPU(nodes, nodes_tresholds, nodes_childs, nodes_bounds, nodes_neighbors, nodes_lights, nodes_plan_normal,
+    nodes_plan_point, materials, lights, node_id, width, height, fov, u, ux, uy, position,
+    diaphragme, max_steps, taille_pixel){
     
     let render_width = Math.floor(width/taille_pixel);
     let render_height = Math.floor(height/taille_pixel);
@@ -341,24 +337,71 @@ function renderGPU(nodes, materials, lights, node_index, width, height, fov, u, 
     let n = Math.sqrt(direction[0]*direction[0] + direction[1]*direction[1] + direction[2]*direction[2]);
     direction = [direction[0]/n, direction[1]/n, direction[2]/n]
 
-    return diaphragme * castRayGPU(nodes, materials, lights, node_index, [position[0], position[1], position[2]], direction, this.thread.z, max_steps);
+    return diaphragme * castRayGPU(nodes, nodes_tresholds, nodes_childs, nodes_bounds, nodes_neighbors, nodes_lights, nodes_plan_normal,
+        nodes_plan_point, materials, lights, node_id, [position[0], position[1], position[2]], direction, this.thread.z, max_steps);
 }
 
 function drawGPU(frame, taille_pixel){
     let x = this.thread.x/taille_pixel;
     let y = this.thread.y/taille_pixel;
 
-    this.color(frame[0][y][x], frame[1][y][x], frame[2][y][x], 1);
+    let r = frame[0][y][x];
+    let g = frame[1][y][x];
+    let b = frame[2][y][x];
+
+    // let mean_color = [0, 0, 0];
+    // let mean_distance_square = 0;
+    // for (let k=0; k<4; k++){
+    //     let i = k==0 ? -1 : k==2 ? 1 : 0;
+    //     let j = k==1 ? -1 : k==3 ? 1 : 0;
+
+    //     mean_color[0] += frame[0][y+j][x+i];
+    //     mean_color[1] += frame[1][y+j][x+i];
+    //     mean_color[2] += frame[2][y+j][x+i];
+
+    //     mean_distance_square += (frame[0][y+j][x+i]-r)**2 + (frame[1][y+j][x+i]-g)**2 + (frame[2][y+j][x+i]-b)**2;
+    // }
+
+    // mean_color[0] /= 4;
+    // mean_color[1] /= 4;
+    // mean_color[2] /= 4;
+    // mean_distance_square /= 4;
+
+    // const max_distance = 0.5;
+    // if (mean_distance_square > max_distance * max_distance){
+    //     r = mean_color[0];
+    //     g = mean_color[1];
+    //     b = mean_color[2];
+
+    //     // r = 1;
+    //     // g = 0;
+    //     // b = 0;
+    // }
+
+    // const seuil = 0.2;
+
+    // if (r < seuil && g < seuil && b < seuil){
+    //     r = frame[0][y][x-1];
+    //     g = frame[1][y][x-1];
+    //     b = frame[2][y][x-1];
+
+    //     // r = 1;
+    //     // g = 0;
+    //     // b = 0;
+    // }
+
+    this.color(r, g, b, 1);
 }
 
 // Classes
 
 class Light{
+    static next_gpu_id = 0;
     constructor(power, color, position){
         this.power = power;
         this.color = color;
         this.position = position;
-        this.gpu_array_index = -1;
+        this.gpu_id = -1;
     }
 
     toArray(){
@@ -371,12 +414,13 @@ class Light{
 }
 
 class Material{
+    static next_gpu_id = 0;
     constructor(diffusion, transparency, reflection, refraction){
         this.diffusion = diffusion; // diffusion pour chaque couleur, entre 0 (transparent) et 1 (opaque)
         this.transparency = transparency;
         this.reflection = reflection; // entre 0 et 1
         this.refraction = refraction; //n1*sin(i) = n2*sin(r)
-        this.gpu_array_index = -1;
+        this.gpu_id = -1;
     }
 
     toArray(){
@@ -390,10 +434,11 @@ class Material{
 }
 
 class Node{
-    constructor(parent, child_index, material, plan_material=null, plan_vec = [0,0,0], plan_point=[0,0,0], tresholds=[0,0,0], childs = [null, null, null, null, null, null, null, null]){
+    static next_gpu_id = 0;
+    constructor(parent, child_index, material, plan_material, plan_vec = [0,0,0], plan_point=[0,0,0], tresholds=[0,0,0], childs = [null, null, null, null, null, null, null, null]){
         this.depth = parent == null ? 0 : parent.depth + 1;
         
-        this.gpu_array_index = -1;
+        this.gpu_id = -1;
         this.parent = parent;
         this.material = material;
         this.tresholds = tresholds;
@@ -416,17 +461,17 @@ class Node{
         if (this.parent == null){ // 0
             result.push(-1);
         } else {
-            result.push(this.parent.gpu_array_index);
+            result.push(this.parent.gpu_id);
         }
 
-        result.push(this.material.gpu_array_index); // 1
+        result.push(this.material.gpu_id); // 1
 
         for (let treshold of this.tresholds){ // 2
             result.push(treshold);
         }
 
         for (let child of this.childs){ // 5
-            result.push(child == null ? -1 : child.gpu_array_index);
+            result.push(child == null ? -1 : child.gpu_id);
         }
 
         for (let bound of this.bounds){ // 13
@@ -434,14 +479,14 @@ class Node{
         }
 
         for (let neighbor of this.neighbors){ // 19
-            result.push(neighbor == null ? -1 : neighbor.gpu_array_index);
+            result.push(neighbor == null ? -1 : neighbor.gpu_id);
         }
 
         for (let light of this.light_in){ // 25
             result.push(light);
         }
         
-        result.push(this.plan_material == null ? -1 : this.plan_material.gpu_array_index); // 46
+        result.push(this.plan_material == null ? -1 : this.plan_material.gpu_id); // 46
         result.push(this.plan_point[0]); // 47
         result.push(this.plan_point[1]);
         result.push(this.plan_point[2]);
@@ -528,14 +573,14 @@ class Node{
                         (this.bounds[3]+this.bounds[2])/2,
                         (this.bounds[5]+this.bounds[4])/2];
 
-        this.childs[0] = new Node(this, 0, materials[0]);
-        this.childs[1] = new Node(this, 1, materials[1]);
-        this.childs[2] = new Node(this, 2, materials[2]);
-        this.childs[3] = new Node(this, 3, materials[3]);
-        this.childs[4] = new Node(this, 4, materials[4]);
-        this.childs[5] = new Node(this, 5, materials[5]);
-        this.childs[6] = new Node(this, 6, materials[6]);
-        this.childs[7] = new Node(this, 7, materials[7]);
+        this.childs[0] = new Node(this, 0, materials[0], materials[0]);
+        this.childs[1] = new Node(this, 1, materials[1], materials[1]);
+        this.childs[2] = new Node(this, 2, materials[2], materials[2]);
+        this.childs[3] = new Node(this, 3, materials[3], materials[3]);
+        this.childs[4] = new Node(this, 4, materials[4], materials[4]);
+        this.childs[5] = new Node(this, 5, materials[5], materials[5]);
+        this.childs[6] = new Node(this, 6, materials[6], materials[6]);
+        this.childs[7] = new Node(this, 7, materials[7], materials[7]);
 
         this.childs[0].update_bounds_and_neighbors();
         this.childs[1].update_bounds_and_neighbors();
@@ -699,12 +744,15 @@ class Camera{
             this.u[0] * this.uy[1] - this.u[1] * this.uy[0]];
     }
 
-    drawFrame(nodes, materials, lights, node_index){
+    drawFrame(nodes, nodes_tresholds, nodes_childs, nodes_bounds, nodes_neighbors, nodes_lights, nodes_plan_normal,
+        nodes_plan_point, materials, lights, node_id){
+        
         if (this.frame != null){
             this.frame.delete();
         }
         
-        this.frame = this.render(nodes, materials, lights, node_index,
+        this.frame = this.render(nodes, nodes_tresholds, nodes_childs, nodes_bounds, nodes_neighbors, nodes_lights,
+            nodes_plan_normal, nodes_plan_point, materials, lights, node_id,
             this.width, this.height, this.fov,
             this.u, this.ux, this.uy,
             this.position, this.diaphragme, this.max_steps, this.taille_pixel);
@@ -727,15 +775,37 @@ class TreeMatterEngine{
 
         this.materials_array = [];
         this.nodes_array = [];
+        this.nodes_tresholds_array = [];
+        this.nodes_childs_array = [];
+        this.nodes_bounds_array = [];
+        this.nodes_neighbors_array = [];
+        this.nodes_lights_array = [];
+        this.nodes_plan_normal_array = [];
+        this.nodes_plan_point_array = [];
 
         this.texture_lights_array = null;
         this.texture_materials_array = null;
         this.texture_nodes_array = null;
+        this.texture_nodes_tresholds_array = null;
+        this.texture_nodes_childs_array = null;
+        this.texture_nodes_bounds_array = null;
+        this.texture_nodes_neighbors_array = null;
+        this.texture_nodes_lights_array = null;
+        this.texture_nodes_plan_normal_array = null;
+        this.texture_nodes_plan_point_array = null;
 
-        this.set_texture = this.camera.gpu.createKernel(function(array){
+        this.create_texture = this.camera.gpu.createKernel(function(array){
             return array[this.thread.x];
         }).setOutput([1]).setPipeline(true).setDynamicOutput(true).setDynamicArguments(true);
-        this.set_texture.immutable = true;
+        this.create_texture.immutable = true;
+
+        // this.set_texture = this.camera.gpu.createKernel(function(texture, array, start_index, array_size){
+        //     if (this.thread.x >= start_index && this.thread.x < start_index + array_size){
+        //         return array[this.thread.x - start_index];
+        //     }
+        //     return texture[this.thread.x];
+        // }).setOutput([1]).setPipeline(true).setDynamicOutput(true).setDynamicArguments(true);
+        // this.set_texture.immutable = true;
 
         this.rebuild();
     }
@@ -752,14 +822,38 @@ class TreeMatterEngine{
             this.texture_materials_array.delete();
         }
 
-        this.set_texture.setOutput([this.lights_array.length]); 
-        this.texture_lights_array = this.set_texture(this.lights_array);
+        this.create_texture.setOutput([this.lights_array.length]); 
+        this.texture_lights_array = this.create_texture(this.lights_array);
 
-        this.set_texture.setOutput([this.materials_array.length]);
-        this.texture_materials_array = this.set_texture(this.materials_array);
+        this.create_texture.setOutput([this.materials_array.length]);
+        this.texture_materials_array = this.create_texture(this.materials_array);
 
-        this.set_texture.setOutput([this.nodes_array.length]);
-        this.texture_nodes_array = this.set_texture(this.nodes_array);
+        console.log(this.texture_materials_array.toArray());
+
+        // nodes
+        this.create_texture.setOutput([this.nodes_array.length]);
+        this.texture_nodes_array = this.create_texture(this.nodes_array);
+
+        this.create_texture.setOutput([this.nodes_tresholds_array.length]);
+        this.texture_nodes_tresholds_array = this.create_texture(this.nodes_tresholds_array);
+
+        this.create_texture.setOutput([this.nodes_childs_array.length]);
+        this.texture_nodes_childs_array = this.create_texture(this.nodes_childs_array);
+
+        this.create_texture.setOutput([this.nodes_bounds_array.length]);
+        this.texture_nodes_bounds_array = this.create_texture(this.nodes_bounds_array);
+
+        this.create_texture.setOutput([this.nodes_neighbors_array.length]);
+        this.texture_nodes_neighbors_array = this.create_texture(this.nodes_neighbors_array);
+
+        this.create_texture.setOutput([this.nodes_lights_array.length]);
+        this.texture_nodes_lights_array = this.create_texture(this.nodes_lights_array);
+
+        this.create_texture.setOutput([this.nodes_plan_normal_array.length]);
+        this.texture_nodes_plan_normal_array = this.create_texture(this.nodes_plan_normal_array);
+
+        this.create_texture.setOutput([this.nodes_plan_point_array.length]);
+        this.texture_nodes_plan_point_array = this.create_texture(this.nodes_plan_point_array);
     }
 
     set_camera_position(position){
@@ -798,12 +892,15 @@ class TreeMatterEngine{
     }
 
     build_arrays(){
+        Material.next_gpu_id = 0;
+        Node.next_gpu_id = 0;
+        Light.next_gpu_id = 0;
 
         // Réinitialisation
         for (let gpu_node of this.nodes_on_gpu){
-            gpu_node.gpu_array_index = -1;
+            gpu_node.gpu_id = -1;
             if (gpu_node.material != null){
-                gpu_node.material.gpu_array_index = -1;
+                gpu_node.material.gpu_id = -1;
             }
         }
         this.nodes_on_gpu = [];
@@ -811,68 +908,109 @@ class TreeMatterEngine{
         this.lights_array = [];
         this.materials_array = [];
         this.nodes_array = [];
+        this.nodes_childs_array = [];
+        this.nodes_bounds_array = [];
+        this.nodes_neighbors_array = [];
+        this.nodes_lights_array = [];
+        this.nodes_plan_normal_array = [];
+        this.nodes_plan_point_array = [];
 
         // adding world node to GPU
         this.add_node_to_array(this.world_node);
         
         if (this.lights_array.length == 0){
-            this.lights_array = [0];
+            this.lights_array = [[0]];
         }
     }
 
     add_node_to_array(node){
 
         // material
-        if (node.material.gpu_array_index < 0){ // Si le material n'est pas déjà ajoutée
-            node.material.gpu_array_index = this.materials_array.length;
+        if (node.material.gpu_id < 0){ // Si le material n'est pas déjà ajoutée
+            node.material.gpu_id = Material.next_gpu_id;
+            Material.next_gpu_id + 1;
             let material_array = node.material.toArray();
-            for(let k=0; k<material_array.length; k++){
+            for (let k=0; k<material_array.length; k++){
                 this.materials_array.push(material_array[k]);
             }
+            
         }
 
         // plan material
-        if (node.plan_material != null && node.plan_material.gpu_array_index < 0){ // Si le material n'est pas déjà ajoutée
-            node.plan_material.gpu_array_index = this.materials_array.length;
+        if (node.plan_material != null && node.plan_material.gpu_id < 0){ // Si le material n'est pas déjà ajoutée
+            node.plan_material.gpu_id = Material.next_gpu_id;
+            Material.next_gpu_id += 1;
             let material_array = node.plan_material.toArray();
-            for(let k=0; k<material_array.length; k++){
+            for (let k=0; k<material_array.length; k++){
                 this.materials_array.push(material_array[k]);
             }
         }
 
-        //create data space
-        node.gpu_array_index = this.nodes_array.length;
-
-        let n = node.toArray().length;
-        for(let k=0; k<n; k++){
-            this.nodes_array.push(0);
-        }
+        //node
         this.nodes_on_gpu.push(node);
+
+        //create data space
+        node.gpu_id = Node.next_gpu_id;
+        Node.next_gpu_id += 1;
+
+
+        this.nodes_array.push(node.parent == null ? -1 : node.parent.gpu_id);
+        this.nodes_array.push(node.material.gpu_id);
+        this.nodes_array.push(node.plan_material.gpu_id);
+
+        for (let k=0; k<3; k++){
+            this.nodes_tresholds_array.push(node.tresholds[k]);
+        }
+        for (let k=0; k<8; k++){
+            this.nodes_childs_array.push(node.childs[k] == null ? -1 : node.childs[k].gpu_id);
+        }
+        for (let k=0; k<6; k++){
+            this.nodes_bounds_array.push(node.bounds[k]);
+        }
+        for (let k=0; k<6; k++){
+            this.nodes_neighbors_array.push(node.neighbors[k] == null ? -1 : node.neighbors[k].gpu_id);
+        }
+        for (let k=0; k<21; k++){
+            this.nodes_lights_array.push(node.light_in[k]);
+        }
+        for (let k=0; k<3; k++){
+            this.nodes_plan_normal_array.push(node.plan_vec[k]);
+        }
+        for (let k=0; k<3; k++){
+            this.nodes_plan_point_array.push(node.plan_point[k]);
+        }
+
+        
 
         //childs
         for (let child of node.childs){
-            if (child != null && child.gpu_array_index < 0){
+            if (child != null && child.gpu_id < 0){
                 this.add_node_to_array(child);
             }
         }
 
         //neighbors
         for (let neighbor of node.neighbors){
-            if (neighbor != null && neighbor.gpu_array_index < 0){
+            if (neighbor != null && neighbor.gpu_id < 0){
                 this.add_node_to_array(neighbor);
             }
         }
 
-        //node
+        //update gpu_id of childs ad neighbors
 
-        let node_array = node.toArray();
-        for(let k=0; k<node_array.length; k++){
-            this.nodes_array[node.gpu_array_index + k] = node_array[k];
+        for (let k=0; k<8; k++){
+            this.nodes_childs_array[node.gpu_id * 8 + k] = node.childs[k] == null ? -1 : node.childs[k].gpu_id;
+        }
+        for (let k=0; k<6; k++){
+            this.nodes_neighbors_array[node.gpu_id * 6 + k] = node.neighbors[k] == null ? -1 : node.neighbors[k].gpu_id;
         }
     }
 
     render(){
-        this.camera.drawFrame(this.texture_nodes_array, this.texture_materials_array, this.texture_lights_array, this.current_node.gpu_array_index);
+        this.camera.drawFrame(this.texture_nodes_array, this.texture_nodes_tresholds_array, this.texture_nodes_childs_array, this.texture_nodes_bounds_array,
+            this.texture_nodes_neighbors_array, this.texture_nodes_lights_array, this.texture_nodes_plan_normal_array,
+            this.texture_nodes_plan_point_array, this.texture_materials_array, this.texture_lights_array,
+            this.current_node.gpu_id);
     }
 
     process_light(node){
@@ -931,12 +1069,12 @@ class TreeMatterEngine{
             node.childs[1] = child;
         }
     
-        if (node.gpu_array_index >= 0){ //Si le node est présent sur le GPU
+        if (node.gpu_id >= 0){ //Si le node est présent sur le GPU
             // update light
             this.process_light(node);
 
             //update les données du GPU
-            if (child.gpu_array_index < 0){ //si le node n'est pas sur le GPU on l'ajoute
+            if (child.gpu_id < 0){ //si le node n'est pas sur le GPU on l'ajoute
                 this.add_node_to_array(child);
             }
         }
@@ -949,12 +1087,12 @@ class TreeMatterEngine{
             node.childs[1] = null;
         }
 
-        if (node.parent != null && node.parent.gpu_array_index >= 0 && node.gpu_array_index >= 0){ // si le parent node est sur le GPU on supprime aussi sur le GPU
-            // let inner_nodes_id = this.nodes_array[parent_node.gpu_array_index][26]
+        if (node.parent != null && node.parent.gpu_id >= 0 && node.gpu_id >= 0){ // si le parent node est sur le GPU on supprime aussi sur le GPU
+            // let inner_nodes_id = this.nodes_array[parent_node.gpu_id][26]
             // let inner_nodes_list = this.inner_nodes_array[inner_nodes_id]
             
             // for (let k=0; k < inner_nodes_list[0]; k++){
-            //     if (inner_nodes_list[1 + k] == node.gpu_array_index){
+            //     if (inner_nodes_list[1 + k] == node.gpu_id){
             //         inner_nodes_list.splice(k, 1);
             //         //inner_nodes_list[0] -= 1;
             //         break;
@@ -968,17 +1106,17 @@ class TreeMatterEngine{
     set_material(node, material){
         node.material = material;
 
-        if (node.gpu_array_index >= 0){ //si le node est sur le GPU on update le GPU
+        if (node.gpu_id >= 0){ //si le node est sur le GPU on update le GPU
             // material
-            if (node.material.gpu_array_index < 0){ // Si le material n'est pas sur le GPU on l'ajoute
-                node.material.gpu_array_index = this.materials_array.length;
+            if (node.material.gpu_id < 0){ // Si le material n'est pas sur le GPU on l'ajoute
+                node.material.gpu_id = this.materials_array.length;
                 let material_array = node.material.toArray();
                 for(let k=0; k<material_array.length; k++){
                     this.materials_array.push(material_array[k]);
                 }
             }
 
-            this.nodes_array[node.gpu_array_index + 5] = node.material.gpu_array_index;
+            this.nodes_array[node.gpu_id + 5] = node.material.gpu_id;
         }
     }
 
