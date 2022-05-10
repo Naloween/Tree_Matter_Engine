@@ -33,7 +33,7 @@ function landscape(a, b){
     const f = 100;
     let res = 0;
 
-    for (let k=0; k<3; k++){
+    for (let k=0; k<6; k++){
         res += altitude_max * noise.perlin2(a * 2**k / f, b * 2**k / f)/ 2**k;
     }
 

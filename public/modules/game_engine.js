@@ -106,7 +106,8 @@ class GameEngine{
         this.player = player;
         this.view = view;
 
-        this.render_distance = 500;
+        this.render_distance = 400;
+        this.min_depth = 14;
         this.max_depth = 17;
 
         this.dt_fps = 1;
@@ -123,7 +124,7 @@ class GameEngine{
         this.camera.position = [this.player.position[0], this.player.position[1], this.player.position[2]];
 
         // world
-        let world_node = this.generate_world(this.camera.position, this.render_distance, this.max_depth);
+        let world_node = this.generate_world(this.camera.position, this.render_distance, this.min_depth, this.max_depth);
 
         // lights
         let my_light = new tme.Light(10000, [1., 1., 1.], [10,-10,100]);
@@ -240,7 +241,7 @@ class GameEngine{
         return [start_position[0] + m*u[0], start_position[1] + m*u[1], start_position[2] + m*u[2]];
     }
 
-    generate_node(node, position, render_distance, max_depth){
+    generate_node(node, position, render_distance, min_depth, max_depth){
 
         let render_distance_rate = render_distance;
         
@@ -262,16 +263,7 @@ class GameEngine{
             let start_material = this.material_map(start_point[0], start_point[1], start_point[2]);
             let end_material = this.material_map(end_point[0], end_point[1], end_point[2]);
             let distance_to_node = Math.max(node_generating.distance_from(position), 0);
-            let dividing = node_generating.depth < max_depth * Math.exp(-distance_to_node / render_distance_rate);
-            
-            if (start_material != end_material){
-                // Create plan of the node
-                let nb_iterations = 20;// - node_generating.depth;
-                node_generating.plan_point = this.find_bound(start_point, end_point, nb_iterations);
-                node_generating.plan_vec = normale;
-                node_generating.material = this.material_map(end_point[0], end_point[1], end_point[2]);
-                node_generating.plan_material = this.material_map(start_point[0], start_point[1], start_point[2]);
-            }
+            let dividing = node_generating.depth < min_depth * Math.exp(-distance_to_node / render_distance_rate) || (node_generating.depth < max_depth * Math.exp(-distance_to_node / render_distance_rate) && start_material != end_material);
 
             // divide node
             if (dividing){
@@ -290,6 +282,15 @@ class GameEngine{
                 for (let child of node_generating.childs){
                     nodes.push(child);
                 }
+            }
+            
+            if (start_material != end_material){
+                // Create plan of the node
+                let nb_iterations = 20;// - node_generating.depth;
+                node_generating.plan_point = this.find_bound(start_point, end_point, nb_iterations);
+                node_generating.plan_vec = normale;
+                node_generating.material = end_material;
+                node_generating.plan_material = start_material;
             }
 
             // fusion nodes if necessary
@@ -331,10 +332,10 @@ class GameEngine{
         }
     }
 
-    generate_world(position, render_distance, max_depth){
+    generate_world(position, render_distance, min_depth, max_depth){
     
-        let node = new tme.Node(null, 0, void_material);
-        this.generate_node(node, position, render_distance, max_depth);
+        let node = new tme.Node(null, 0, void_material, void_material);
+        this.generate_node(node, position, render_distance, min_depth, max_depth);
         return node;
     }
 

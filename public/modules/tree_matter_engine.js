@@ -153,6 +153,7 @@ function castRayGPU(nodes, nodes_tresholds, nodes_childs, nodes_bounds, nodes_ne
 
                 next_node_id = node_id;
                 previous_node_id = node_id;
+                //material_id = nodes[node_id * 3 + 2];
             }
 
             if (t <= 0){
@@ -160,9 +161,10 @@ function castRayGPU(nodes, nodes_tresholds, nodes_childs, nodes_bounds, nodes_ne
             }
 
             //Pass through current node
+
             let plan_scal = (current_cast_point[0] - nodes_plan_point[node_id * 3 + 0]) * nodes_plan_normal[node_id * 3 + 0]
-                            + (current_cast_point[1] - nodes_plan_point[node_id * 3 + 1]) * nodes_plan_normal[node_id * 3 + 1]
-                            + (current_cast_point[2] - nodes_plan_point[node_id * 3 + 2]) * nodes_plan_normal[node_id * 3 + 2];
+                        + (current_cast_point[1] - nodes_plan_point[node_id * 3 + 1]) * nodes_plan_normal[node_id * 3 + 1]
+                        + (current_cast_point[2] - nodes_plan_point[node_id * 3 + 2]) * nodes_plan_normal[node_id * 3 + 2];
             let material_id = plan_scal < 0 ? nodes[node_id * 3 + 2] : nodes[node_id * 3 + 1];
             let transparency = materials[material_id * MATERIAL_DATA_SIZE + 3 + channel];
 
@@ -181,7 +183,7 @@ function castRayGPU(nodes, nodes_tresholds, nodes_childs, nodes_bounds, nodes_ne
                     }
                 }
 
-                if (plan_scal >= 0 || (nodes_plan_normal[node_id * 3 + 0] == 0 && nodes_plan_normal[node_id * 3 + 1] == 0 && nodes_plan_normal[node_id * 3 + 2] == 0)){
+                if (plan_scal > 0 || (nodes_plan_normal[node_id * 3 + 0] == 0 && nodes_plan_normal[node_id * 3 + 1] == 0 && nodes_plan_normal[node_id * 3 + 2] == 0)){
                     light = nodes_lights[node_id * 21 + 3 * nearest_face + channel];
                 } else {
                     let distance_to_plan = (nodes_plan_point[node_id * 3 + 0] - current_cast_point[0]) * nodes_plan_normal[node_id * 3 + 0]
@@ -928,7 +930,7 @@ class TreeMatterEngine{
         // material
         if (node.material.gpu_id < 0){ // Si le material n'est pas déjà ajoutée
             node.material.gpu_id = Material.next_gpu_id;
-            Material.next_gpu_id + 1;
+            Material.next_gpu_id += 1;
             let material_array = node.material.toArray();
             for (let k=0; k<material_array.length; k++){
                 this.materials_array.push(material_array[k]);
